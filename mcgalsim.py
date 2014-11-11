@@ -1,4 +1,6 @@
+from copy import deepcopy
 from argparse import ArgumentParser
+import time
 
 import matplotlib
 matplotlib.use('Agg')
@@ -74,13 +76,26 @@ def mcgalsim(args):
     pp, lnp, rstate = sampler.run_mcmc(p0, 5)
     sampler.reset()
 
+    pps = []
+    lnps = []
+    dts = []
+
+    print "sampling"
     with ProgressBar(args.nburn+args.nsamples) as bar:
         for i in range(args.nburn+args.nsamples):
+            t1 = time.time()
             bar.update()
             pp, lnp, rstate = sampler.run_mcmc(pp, 1, lnprob0=lnp, rstate0=rstate)
-    samples = sampler.chain[:, args.nburn:, :].reshape((-1, ndim))
+            dt = time.time() - t1
+            pps.append(pp)
+            lnps.append(deepcopy(lnp))
+            dts.append(dt)
+    samples = sampler.chain[:, args.nburn:, :]
+    lnps = lnps[args.nburn:]
+    dts = dts[args.nburn:]
+    flat_samples = samples.reshape((-1, ndim))
     print "making triangle plot"
-    fig = triangle.corner(samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
+    fig = triangle.corner(flat_samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
                           truths=[args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2])
     fig.savefig("mcgalsim.png", dpi=300)
 

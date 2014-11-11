@@ -156,7 +156,7 @@ if __name__ == '__main__':
                         help="Numbers of burn-in samples")
     parser.add_argument('--nsamples', type=int, default=30,
                         help="Numbers of samples per walker")
-    parser.add_argument('--nthreads', type=int, default=8,
+    parser.add_argument('--nthreads', type=int, default=4,
                         help="Numbers of threads")
     args = parser.parse_args()
     mcgalsim(args)

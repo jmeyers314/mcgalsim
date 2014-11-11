@@ -97,7 +97,29 @@ def mcgalsim(args):
     print "making triangle plot"
     fig = triangle.corner(flat_samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
                           truths=[args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2])
-    fig.savefig("mcgalsim.png", dpi=300)
+    fig.savefig("triangle.png", dpi=300)
+    print "making walker plot"
+    # Try to make plot aspect ratio near golden
+    nparam = ndim+2 # add 2 for lnp and dt
+    ncols = int(np.ceil(np.sqrt(nparam*1.6)))
+    nrows = int(np.ceil(1.0*nparam/ncols))
+
+    fig = plt.figure(figsize = (3.0*ncols,3.0*nrows))
+    for i, p in enumerate(["x0", "y0", "n", "flux", "HLR", "e1", "e2"]):
+        ax = fig.add_subplot(nrows, ncols, i+1)
+        ax.plot(samples[..., i].T)
+        ax.set_ylabel(p)
+    ax = fig.add_subplot(nrows, ncols, i+2)
+    ax.plot(np.array(lnps))
+    ax.set_ylabel("ln(prob)")
+    ax = fig.add_subplot(nrows, ncols, i+3)
+    ax.plot(dts)
+    ax.set_ylabel(r"$\Delta t$")
+    fig.tight_layout()
+    fig.savefig("walkers.png", dpi=300)
+
+
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()

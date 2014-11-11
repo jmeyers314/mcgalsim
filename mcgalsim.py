@@ -39,7 +39,10 @@ def lnprob(p, psf_args, target_img, noise_var):
     psf = psf.shear(e1=PSF_e1, e2=PSF_e2)
 
     final = galsim.Convolve(gal, psf)
-    final.drawImage(image=model_img)
+    try:
+        final.drawImage(image=model_img)
+    except:
+        return -np.inf
     lnlike = -0.5 * np.sum((target_img.array - model_img.array)**2/noise_var)
 
     return lp + lnlike
@@ -117,8 +120,6 @@ def mcgalsim(args):
     ax.set_ylabel(r"$\Delta t$")
     fig.tight_layout()
     fig.savefig("walkers.png", dpi=300)
-
-
 
 
 if __name__ == '__main__':

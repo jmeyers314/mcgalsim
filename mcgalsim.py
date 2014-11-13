@@ -110,7 +110,8 @@ def mcgalsim(args):
     print "making triangle plot"
     fig = triangle.corner(flat_samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
                           truths=[args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2])
-    fig.savefig("triangle.png", dpi=300)
+    fig.savefig("triangle.png", dpi=220)
+
     print "making walker plot"
     # Try to make plot aspect ratio near golden
     nparam = ndim+2 # add 3 for lnp and dt, lnp dist
@@ -153,51 +154,46 @@ def mcgalsim(args):
     ax.set_ylabel(r"#")
     ax.set_yticklabels(ax.get_yticks(), rotation=45)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
-    xlim = ax.get_xlim()
-    ax.set_xlim(xlim)
-    ylim = ax.get_ylim()
-    ax.set_ylim(ylim)
-    ax.fill_between([args.nburn,xlim[1]], [ylim[0]]*2, [ylim[1]]*2, color="#CCCCCC")
 
     fig.tight_layout()
-    fig.savefig("walkers.png", dpi=200)
+    fig.savefig("walkers.png", dpi=220)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--x0', type=float, default=0.0,
-                        help="Galaxy centroid")
+                        help="Galaxy centroid (default: 0.0)")
     parser.add_argument('--y0', type=float, default=0.0,
-                        help="Galaxy centroid")
+                        help="Galaxy centroid (default: 0.0)")
     parser.add_argument('-n', type=float, default=1.0,
-                        help="Galaxy Sersic index")
+                        help="Galaxy Sersic index (default: 1.0)")
     parser.add_argument('--flux', type=float, default=10.0,
-                        help="Galaxy flux")
+                        help="Galaxy flux (default: 10.0)")
     parser.add_argument('--HLR', type=float, default=0.5,
-                        help="Galaxy half light radius")
+                        help="Galaxy half light radius (default: 0.5)")
     parser.add_argument('--e1', type=float, default=0.0,
-                        help="Galaxy ellipticity")
+                        help="Galaxy ellipticity (default: 0.0)")
     parser.add_argument('--e2', type=float, default=0.0,
-                        help="Galaxy ellipticity")
+                        help="Galaxy ellipticity (default: 0.0)")
     parser.add_argument('--beta', type=float, default=3.0,
-                        help="PSF Moffat index")
+                        help="PSF Moffat index (default: 3.0)")
     parser.add_argument('--PSF_FWHM', type=float, default=0.6,
-                        help="PSF FWHM")
+                        help="PSF FWHM (default: 0.6)")
     parser.add_argument('--PSF_e1', type=float, default=0.0,
-                        help="PSF ellipticity")
+                        help="PSF ellipticity (default: 0.0)")
     parser.add_argument('--PSF_e2', type=float, default=0.0,
-                        help="PSF ellipticity")
+                        help="PSF ellipticity (default: 0.0)")
     parser.add_argument('--snr', type=float, default=80.0,
-                        help="Signal-to-noise ratio")
+                        help="Signal-to-noise ratio (default: 80.0)")
     parser.add_argument('--seed', type=int, default=0,
-                        help="Random number seed")
+                        help="Random number seed (default: 0)")
     parser.add_argument('--nwalkers', type=int, default=32,
-                        help="Number of walkers")
+                        help="Number of walkers (default: 32)")
     parser.add_argument('--nburn', type=int, default=30,
-                        help="Numbers of burn-in samples")
+                        help="Numbers of burn-in samples (default: 30)")
     parser.add_argument('--nsamples', type=int, default=30,
-                        help="Numbers of samples per walker")
+                        help="Numbers of samples per walker (default: 30)")
     parser.add_argument('--nthreads', type=int, default=4,
-                        help="Numbers of threads")
+                        help="Numbers of threads (default: 4)")
     args = parser.parse_args()
     mcgalsim(args)

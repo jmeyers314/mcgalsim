@@ -47,6 +47,16 @@ def lnprob(p, psf_args, target_img, noise_var):
 
     return lp + lnlike
 
+def autocorrtime(chain):
+    N, K = chain.shape
+    if N < 100: return
+    M = 50
+    tau_int = emcee.autocorr.integrated_time(chain, window=M)
+    while (M < 4*tau_int.max()) & (M < N/4) :
+        M = 4.1*tau_int.max()
+        tau_int = emcee.autocorr.integrated_time(chain, window=M)
+    return tau_int
+
 def mcgalsim(args):
     bd = galsim.BaseDeviate(args.seed)
     gn = galsim.GaussianNoise(bd)
@@ -69,41 +79,41 @@ def mcgalsim(args):
 
     psf_args = [args.beta, args.PSF_FWHM, args.PSF_e1, args.PSF_e2]
     p1 = [args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2]
-    dp1 = np.array([0.01, 0.01, 0.01, 10.0, 0.1, 0.01, 0.01])
+    dp1 = 0.001
     ndim = len(p1)
     p0 = walker_ball(p1, dp1, args.nwalkers)
 
     sampler = emcee.EnsembleSampler(args.nwalkers, ndim, lnprob,
                                     args=(psf_args, target_img, noise_var),
                                     threads=args.nthreads)
-    pp, lnp, rstate = sampler.run_mcmc(p0, 5)
+    pp, lnp, rstate = sampler.run_mcmc(p0, 1)
     sampler.reset()
 
-    pps = []
     lnps = []
     dts = []
 
     print "sampling"
     with ProgressBar(args.nburn+args.nsamples) as bar:
         for i in range(args.nburn+args.nsamples):
-            t1 = time.time()
             bar.update()
+            t1 = time.time()
             pp, lnp, rstate = sampler.run_mcmc(pp, 1, lnprob0=lnp, rstate0=rstate)
-            dt = time.time() - t1
-            pps.append(pp)
+            dt = (time.time() - t1) / args.nwalkers * args.nthreads
             lnps.append(deepcopy(lnp))
             dts.append(dt)
-    samples = sampler.chain[:, args.nburn:, :]
-    lnps = lnps[args.nburn:]
-    dts = dts[args.nburn:]
-    flat_samples = samples.reshape((-1, ndim))
+    samples = sampler.chain
+    lnps = np.array(lnps)
+    dts = np.array(dts)
+    flat_samples = samples[:, args.nburn:, :].reshape((-1, ndim)) # flat_samples excludes burn-in
+    if flat_samples.shape[0] > 500:
+        tau_int = autocorrtime(flat_samples)
     print "making triangle plot"
     fig = triangle.corner(flat_samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
                           truths=[args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2])
     fig.savefig("triangle.png", dpi=300)
     print "making walker plot"
     # Try to make plot aspect ratio near golden
-    nparam = ndim+2 # add 2 for lnp and dt
+    nparam = ndim+2 # add 3 for lnp and dt, lnp dist
     ncols = int(np.ceil(np.sqrt(nparam*1.6)))
     nrows = int(np.ceil(1.0*nparam/ncols))
 
@@ -112,14 +122,45 @@ def mcgalsim(args):
         ax = fig.add_subplot(nrows, ncols, i+1)
         ax.plot(samples[..., i].T)
         ax.set_ylabel(p)
+        ax.set_yticklabels(ax.get_yticks(), rotation=45)
+        ax.set_xticklabels(ax.get_xticks(), rotation=45)
+        ylim = ax.get_ylim()
+        ylim = np.r_[ylim[0], (ylim[1]-ylim[0])*1.1+ylim[0]]
+        ax.set_ylim(ylim)
+        xlim = ax.get_xlim()
+        ax.set_xlim(xlim)
+        ax.fill_between([args.nburn,xlim[1]], [ylim[0]]*2, [ylim[1]]*2, color="#CCCCCC")
+        if "tau_int" in locals():
+            ax.text(0.6, 0.90, r"$\tau_\mathrm{{int}} = {:g}$".format(int(tau_int[i])),
+                    transform=ax.transAxes)
+
+    # lnp chains
     ax = fig.add_subplot(nrows, ncols, i+2)
-    ax.plot(np.array(lnps))
-    ax.set_ylabel("ln(prob)")
+    ax.plot(lnps)
+    ax.set_ylabel(r"ln(prob)")
+    ax.set_yticklabels(ax.get_yticks(), rotation=45)
+    ax.set_xticklabels(ax.get_xticks(), rotation=45)
+    xlim = ax.get_xlim()
+    ax.set_xlim(xlim)
+    ylim = ax.get_ylim()
+    ax.set_ylim(ylim)
+    ax.fill_between([args.nburn,xlim[1]], [ylim[0]]*2, [ylim[1]]*2, color="#CCCCCC")
+
+    # delta t distribution
     ax = fig.add_subplot(nrows, ncols, i+3)
-    ax.plot(dts)
-    ax.set_ylabel(r"$\Delta t$")
+    ax.hist(dts)
+    ax.set_xlabel(r"$\Delta t (s)$")
+    ax.set_ylabel(r"#")
+    ax.set_yticklabels(ax.get_yticks(), rotation=45)
+    ax.set_xticklabels(ax.get_xticks(), rotation=45)
+    xlim = ax.get_xlim()
+    ax.set_xlim(xlim)
+    ylim = ax.get_ylim()
+    ax.set_ylim(ylim)
+    ax.fill_between([args.nburn,xlim[1]], [ylim[0]]*2, [ylim[1]]*2, color="#CCCCCC")
+
     fig.tight_layout()
-    fig.savefig("walkers.png", dpi=300)
+    fig.savefig("walkers.png", dpi=200)
 
 
 if __name__ == '__main__':
@@ -130,7 +171,7 @@ if __name__ == '__main__':
                         help="Galaxy centroid")
     parser.add_argument('-n', type=float, default=1.0,
                         help="Galaxy Sersic index")
-    parser.add_argument('--flux', type=float, default=1000.0,
+    parser.add_argument('--flux', type=float, default=10.0,
                         help="Galaxy flux")
     parser.add_argument('--HLR', type=float, default=0.5,
                         help="Galaxy half light radius")

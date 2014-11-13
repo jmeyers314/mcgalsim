@@ -11,23 +11,8 @@ import emcee
 import triangle
 from astropy.utils.console import ProgressBar
 
-# PSF params for atmospheric + optical
-lam_over_diam = 700e-9 / 8.4 * 3600 * 180.0 / np.pi
-aberrations = [0.0]*4 + [0.1]*8
-obscuration = 0.5
-atm_FWHM = 0.6
-atm_e1 = 0.01
-atm_e2 = 0.02
-psf = galsim.Convolve(galsim.Kolmogorov(fwhm=atm_FWHM).shear(e1=atm_e1, e2=atm_e2),
-                      galsim.OpticalPSF(lam_over_diam=lam_over_diam,
-                                        aberrations=aberrations,
-                                        obscuration=obscuration))
-
-# PSF params for Moffat PSF
-# psf = galsim.Moffat(fwhm = 0.7, beta=3.0).shear(e1=0.01, e2=0.02)
-
 def walker_ball(alpha, spread, nwalkers):
-    return [alpha+(np.random.rand(len(alpha))*spread-0.5*spread) for i in xrange(nwalkers)]
+    return [alpha+np.random.randn(len(alpha))*spread for i in xrange(nwalkers)]
 
 def lnprior(p):
     x0, y0, n, flux, HLR, e1, e2 = p
@@ -37,7 +22,7 @@ def lnprior(p):
     if e1**2 + e2**2 > 1.0: return -np.inf
     return 0.0
 
-def lnprob(p, target_img, noise_var):
+def lnprob(p, target_img, noise_var, psftype):
     lp = lnprior(p)
     if not np.isfinite(lp):
         return -np.inf
@@ -47,6 +32,20 @@ def lnprob(p, target_img, noise_var):
     gal = galsim.Sersic(n=n, half_light_radius=HLR, flux=flux)
     gal = gal.shear(e1=e1, e2=e2)
     gal = gal.shift(x0, y0)
+
+    if psftype == 'atmopt':
+        lam_over_diam = 700e-9 / 8.4 * 3600 * 180.0 / np.pi
+        aberrations = [0.0]*4 + [0.1]*8
+        obscuration = 0.5
+        atm_FWHM = 0.6
+        atm_e1 = 0.01
+        atm_e2 = 0.02
+        psf = galsim.Convolve(galsim.Kolmogorov(fwhm=atm_FWHM).shear(e1=atm_e1, e2=atm_e2),
+                              galsim.OpticalPSF(lam_over_diam=lam_over_diam,
+                                                aberrations=aberrations,
+                                                obscuration=obscuration))
+    elif psftype == 'moffat':
+        psf = galsim.Moffat(fwhm = 0.7, beta=3.0).shear(e1=0.01, e2=0.02)
 
     final = galsim.Convolve(gal, psf)
     try:
@@ -79,6 +78,20 @@ def mcgalsim(args):
     gal = gal.shear(e1=args.e1, e2=args.e2)
     gal = gal.shift(args.x0, args.y0)
 
+    if args.psf == 'atmopt':
+        lam_over_diam = 700e-9 / 8.4 * 3600 * 180.0 / np.pi
+        aberrations = [0.0]*4 + [0.1]*8
+        obscuration = 0.5
+        atm_FWHM = 0.6
+        atm_e1 = 0.01
+        atm_e2 = 0.02
+        psf = galsim.Convolve(galsim.Kolmogorov(fwhm=atm_FWHM).shear(e1=atm_e1, e2=atm_e2),
+                              galsim.OpticalPSF(lam_over_diam=lam_over_diam,
+                                                aberrations=aberrations,
+                                                obscuration=obscuration))
+    elif args.psf == 'moffat':
+        psf = galsim.Moffat(fwhm = 0.7, beta=3.0).shear(e1=0.01, e2=0.02)
+
     final = galsim.Convolve(gal, psf)
     final.drawImage(image=target_img)
     noise_var = target_img.addNoiseSNR(gn, args.snr, preserve_flux=True)
@@ -87,9 +100,10 @@ def mcgalsim(args):
     dp1 = 0.001
     ndim = len(p1)
     p0 = walker_ball(p1, dp1, args.nwalkers)
+    # print np.array(p0).mean(axis=0)
 
     sampler = emcee.EnsembleSampler(args.nwalkers, ndim, lnprob,
-                                    args=(target_img, noise_var),
+                                    args=(target_img, noise_var, args.psf),
                                     threads=args.nthreads)
     pp, lnp, rstate = sampler.run_mcmc(p0, 1)
     sampler.reset()
@@ -110,7 +124,7 @@ def mcgalsim(args):
     lnps = np.array(lnps)
     dts = np.array(dts)
     flat_samples = samples[:, args.nburn:, :].reshape((-1, ndim)) # flat_samples excludes burn-in
-    if flat_samples.shape[0] > 500:
+    if flat_samples.shape[0] > 2000:
         tau_int = autocorrtime(flat_samples)
     print "making triangle plot"
     fig = triangle.corner(flat_samples, labels=["x0", "y0", "n", "flux", "HLR", "e1", "e2"],
@@ -182,6 +196,8 @@ if __name__ == '__main__':
                         help="Galaxy ellipticity (default: 0.0)")
     parser.add_argument('--snr', type=float, default=80.0,
                         help="Signal-to-noise ratio (default: 80.0)")
+    parser.add_argument('--psf', default='moffat',
+                        help="psf type: (moffat | atmopt) (default: moffat)")
     parser.add_argument('--seed', type=int, default=0,
                         help="Random number seed (default: 0)")
     parser.add_argument('--nwalkers', type=int, default=32,

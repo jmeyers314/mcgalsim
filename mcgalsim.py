@@ -11,6 +11,21 @@ import emcee
 import triangle
 from astropy.utils.console import ProgressBar
 
+# PSF params for atmospheric + optical
+lam_over_diam = 700e-9 / 8.4 * 3600 * 180.0 / np.pi
+aberrations = [0.0]*4 + [0.1]*8
+obscuration = 0.5
+atm_FWHM = 0.6
+atm_e1 = 0.01
+atm_e2 = 0.02
+psf = galsim.Convolve(galsim.Kolmogorov(fwhm=atm_FWHM).shear(e1=atm_e1, e2=atm_e2),
+                      galsim.OpticalPSF(lam_over_diam=lam_over_diam,
+                                        aberrations=aberrations,
+                                        obscuration=obscuration))
+
+# PSF params for Moffat PSF
+# psf = galsim.Moffat(fwhm = 0.7, beta=3.0).shear(e1=0.01, e2=0.02)
+
 def walker_ball(alpha, spread, nwalkers):
     return [alpha+(np.random.rand(len(alpha))*spread-0.5*spread) for i in xrange(nwalkers)]
 
@@ -22,21 +37,16 @@ def lnprior(p):
     if e1**2 + e2**2 > 1.0: return -np.inf
     return 0.0
 
-def lnprob(p, psf_args, target_img, noise_var):
+def lnprob(p, target_img, noise_var):
     lp = lnprior(p)
     if not np.isfinite(lp):
         return -np.inf
     x0, y0, n, flux, HLR, e1, e2 = p
-    beta, PSF_FWHM, PSF_e1, PSF_e2 = psf_args
     model_img = galsim.ImageD(25, 25, scale=0.2)
 
     gal = galsim.Sersic(n=n, half_light_radius=HLR, flux=flux)
     gal = gal.shear(e1=e1, e2=e2)
     gal = gal.shift(x0, y0)
-
-    psf = galsim.Moffat(beta=beta,
-                        fwhm=PSF_FWHM)
-    psf = psf.shear(e1=PSF_e1, e2=PSF_e2)
 
     final = galsim.Convolve(gal, psf)
     try:
@@ -69,22 +79,17 @@ def mcgalsim(args):
     gal = gal.shear(e1=args.e1, e2=args.e2)
     gal = gal.shift(args.x0, args.y0)
 
-    psf = galsim.Moffat(beta=args.beta,
-                        fwhm=args.PSF_FWHM)
-    psf = psf.shear(e1=args.PSF_e1, e2=args.PSF_e2)
-
     final = galsim.Convolve(gal, psf)
     final.drawImage(image=target_img)
     noise_var = target_img.addNoiseSNR(gn, args.snr, preserve_flux=True)
 
-    psf_args = [args.beta, args.PSF_FWHM, args.PSF_e1, args.PSF_e2]
     p1 = [args.x0, args.y0, args.n, args.flux, args.HLR, args.e1, args.e2]
     dp1 = 0.001
     ndim = len(p1)
     p0 = walker_ball(p1, dp1, args.nwalkers)
 
     sampler = emcee.EnsembleSampler(args.nwalkers, ndim, lnprob,
-                                    args=(psf_args, target_img, noise_var),
+                                    args=(target_img, noise_var),
                                     threads=args.nthreads)
     pp, lnp, rstate = sampler.run_mcmc(p0, 1)
     sampler.reset()
@@ -114,7 +119,7 @@ def mcgalsim(args):
 
     print "making walker plot"
     # Try to make plot aspect ratio near golden
-    nparam = ndim+2 # add 3 for lnp and dt, lnp dist
+    nparam = ndim+2 # add 2 for lnp and dt
     ncols = int(np.ceil(np.sqrt(nparam*1.6)))
     nrows = int(np.ceil(1.0*nparam/ncols))
 
@@ -175,14 +180,6 @@ if __name__ == '__main__':
                         help="Galaxy ellipticity (default: 0.0)")
     parser.add_argument('--e2', type=float, default=0.0,
                         help="Galaxy ellipticity (default: 0.0)")
-    parser.add_argument('--beta', type=float, default=3.0,
-                        help="PSF Moffat index (default: 3.0)")
-    parser.add_argument('--PSF_FWHM', type=float, default=0.6,
-                        help="PSF FWHM (default: 0.6)")
-    parser.add_argument('--PSF_e1', type=float, default=0.0,
-                        help="PSF ellipticity (default: 0.0)")
-    parser.add_argument('--PSF_e2', type=float, default=0.0,
-                        help="PSF ellipticity (default: 0.0)")
     parser.add_argument('--snr', type=float, default=80.0,
                         help="Signal-to-noise ratio (default: 80.0)")
     parser.add_argument('--seed', type=int, default=0,
